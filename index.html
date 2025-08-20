@@ -2,78 +2,64 @@
 <html lang="ru">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>GLB Viewer — verified</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PScolor_3D.glb — просмотр</title>
+
+  <!-- Подключаем model-viewer -->
+  <script type="module" src="https://unpkg.com/@google/model-viewer@^3/dist/model-viewer.min.js"></script>
+
   <style>
-    html,body{height:100%;margin:0;background:#111;overflow:hidden}
-    canvas{display:block;width:100%;height:100%}
-    #hud{position:fixed;left:12px;right:12px;top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-    .chip{padding:6px 10px;border-radius:999px;font:12px/1 system-ui,Arial;background:#1f2430;color:#ddd}
-    .ok{background:#17361c;color:#d8ffd6}
-    .err{background:#3a1f1f;color:#ffdada}
-    #log{position:fixed;left:12px;right:12px;bottom:12px;background:#1f2430;padding:10px;border-radius:10px;
-         font:12px/1.4 ui-monospace,Consolas,monospace;max-height:50vh;overflow:auto;white-space:pre-wrap}
+    html, body { height: 100%; margin: 0; background: #0f1115; }
+    model-viewer { width: 100%; height: 100%; background: #0f1115; }
+    #status {
+      position: fixed; left: 12px; bottom: 12px;
+      background: rgba(0,0,0,.6); color: #fff;
+      padding: 8px 10px; border-radius: 10px; font: 14px/1.35 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu;
+      pointer-events: none; user-select: none;
+    }
   </style>
 </head>
 <body>
-<div id="hud">
-  <div id="status" class="chip">Проверка URL…</div>
-  <div id="progress" class="chip"></div>
-  <a id="open" class="chip" href="#" target="_blank" rel="noopener">Открыть GLB</a>
-</div>
-<div id="log" style="display:none"></div>
 
-<script type="module">
-  import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js';
-  import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/loaders/GLTFLoader.js';
+  <!-- Если файл лежит рядом с этим index.html, путь просто "PScolor_3D.glb" -->
+  <model-viewer id="mv"
+      src="PScolor_3D.glb"
+      camera-controls
+      touch-action="pan-y"
+      autoplay
+      auto-rotate
+      shadow-intensity="1">
+  </model-viewer>
 
-  const status = document.getElementById('status');
-  const progress = document.getElementById('progress');
-  const logBox = document.getElementById('log');
-  const log = (m)=>{ logBox.style.display='block'; logBox.textContent += String(m)+'\n'; console.log(m); };
-  const ok=(t)=>{ status.className='chip ok'; status.textContent=t; };
-  const err=(t)=>{ status.className='chip err'; status.textContent='Ошибка'; log(t); };
+  <div id="status">Загрузка…</div>
 
-  // Абсолютный URL к твоей модели + кэш-бастер
-  const MODEL_URL = 'https://how2aicpu.github.io/how2aiweb/PScolor_3D.glb?v=' + Date.now();
-  document.getElementById('open').href = MODEL_URL;
-  log('MODEL_URL=' + MODEL_URL);
+  <script>
+    const mv = document.getElementById('mv');
+    const status = document.getElementById('status');
 
-  // Префлайт-проверка
-  try {
-    const head = await fetch(MODEL_URL, { method:'GET', mode:'cors' });
-    log('fetch status ' + head.status + ' ' + head.statusText);
-    if (!head.ok) throw new Error('HTTP ' + head.status + ' ' + head.statusText);
-    ok('URL ок, загружаю модель…');
-  } catch (e) {
-    err('Файл недоступен: ' + e.message);
-  }
+    // Поддержка передачи имени файла через ?src=ИмяФайла.glb (по желанию)
+    const p = new URLSearchParams(location.search);
+    if (p.get('src')) mv.src = p.get('src');
 
-  const scene = new THREE.Scene(); scene.background = new THREE.Color(0x202225);
-  const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.01, 5000);
-  const renderer = new THREE.WebGLRenderer({antialias:true}); renderer.setSize(innerWidth, innerHeight);
-  renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  document.body.appendChild(renderer.domElement);
-  scene.add(new THREE.AmbientLight(0xffffff,0.7));
-  { const d = new THREE.DirectionalLight(0xffffff,1.0); d.position.set(3,5,2); scene.add(d); }
+    // Прогресс
+    mv.addEventListener('progress', (ev) => {
+      if (!ev.total) { status.textContent = 'Загрузка…'; return; }
+      const pct = Math.max(0, Math.min(100, Math.round(ev.loaded / ev.total * 100)));
+      status.textContent = `Загрузка: ${pct}%`;
+    });
 
-  let root=null;
-  const loader = new GLTFLoader();
-  loader.load(MODEL_URL, (g)=>{
-    root=g.scene; scene.add(root); fit(camera,root);
-    ok('Готово'); setTimeout(()=>{document.getElementById('hud').style.display='none';},1000);
-  }, (e)=>{
-    if (e.total) progress.textContent = 'Загрузка ' + (e.loaded/e.total*100).toFixed(0) + '%';
-  }, (e)=>{ err('GLTFLoader error: ' + (e?.message || e)); });
+    // Успешная загрузка
+    mv.addEventListener('load', () => {
+      status.textContent = 'Готово';
+      setTimeout(() => status.style.display = 'none', 800);
+    });
 
-  function fit(cam,obj){ const b=new THREE.Box3().setFromObject(obj), c=b.getCenter(new THREE.Vector3()),
-    s=b.getSize(new THREE.Vector3()), m=Math.max(s.x,s.y,s.z)||1, dist=m/(2*Math.tan(THREE.MathUtils.degToRad(cam.fov)/2));
-    cam.near=dist/100; cam.far=dist*100; cam.updateProjectionMatrix(); cam.position.copy(c).add(new THREE.Vector3(dist,dist*0.3,dist));
-    const pivot = new THREE.Group(); pivot.position.copy(c); obj.position.sub(c); pivot.add(obj); scene.add(pivot); root=pivot; }
-
-  (function loop(){ requestAnimationFrame(loop); if(root) root.rotation.y += 0.004; renderer.render(scene, camera); })();
-  addEventListener('resize',()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
-
-</script>
+    // Ошибки (показываем текст на экране и в консоли)
+    mv.addEventListener('error', (e) => {
+      const msg = e?.detail?.message || e?.message || 'Неизвестная ошибка';
+      status.textContent = 'Ошибка: ' + msg;
+      console.error('Model Viewer Error:', e);
+    });
+  </script>
 </body>
 </html>
