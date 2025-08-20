@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>PScolor_3D.glb — Three.js Viewer (Robust)</title>
+  <style>
+    html,body{height:100%;margin:0;overflow:hidden;background:#0f1115;color:#e6e6e6}
+    #hud{position:fixed;left:12px;right:12px;top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+    .chip{padding:6px 10px;border-radius:999px;font:12px/1 system-ui,Arial;background:#1f2430;color:#ddd}
+    .ok{background:#17361c;color:#d8ffd6}
+    .err{background:#3a1f1f;color:#ffdada}
+    #log{position:fixed;left:12px;right:12px;bottom:12px;background:#1f2430;padding:10px;border-radius:10px;
+         font:12px/1.4 ui-monospace,Consolas,monospace;max-height:40vh;overflow:auto;white-space:pre-wrap}
+    canvas{display:block;width:100%;height:100%}
+  </style>
+</head>
+<body>
+  <div id="hud">
+    <div id="status" class="chip">Загрузка…</div>
+    <div id="progress" class="chip"></div>
+  </div>
+  <div id="log" style="display:none"></div>
+
+<script type="module">
+  const statusChip = document.getElementById('status');
+  const progressChip = document.getElementById('progress');
+  const logBox = document.getElementById('log');
+  function log(msg){ logBox.style.display='block'; logBox.textContent += String(msg) + "\n"; console.log(msg); }
+  function setErr(msg){ statusChip.className='chip err'; statusChip.textContent='Ошибка'; log(msg); }
+  function setOk(msg){ statusChip.className='chip ok'; statusChip.textContent=msg || 'Готово'; }
+
+  window.addEventListener('error', e => setErr(e.message));
+  window.addEventListener('unhandledrejection', e => setErr(e.reason?.message || e.reason || 'Unhandled promise rejection'));
+
+  // --- Imports (ESM) ---
+  import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js';
+  import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/controls/OrbitControls.js';
+  import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/loaders/GLTFLoader.js';
+  import { DRACOLoader } from 'https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/loaders/DRACOLoader.js';
+  import MeshoptDecoder from 'https://cdn.jsdelivr.net/npm/meshoptimizer@0.20.0/meshopt_decoder.module.js';
+
+  // --- Scene / Camera / Renderer ---
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x17191f);
+
+  const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.01, 5000);
+  camera.position.set(0, 1, 3);
+
+  const renderer = new THREE.WebGLRenderer({ antialias:true });
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  document.body.appendChild(renderer.domElement);
+
+  // Lights
+  scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+  const dir = new THREE.DirectionalLight(0xffffff, 1.1);
+  dir.position.set(3,5,2);
+  scene.add(dir);
+
+  // Helpers (visible to ensure something renders)
+  const axes = new THREE.AxesHelper(0.5);
+  axes.position.set(0,0,0);
+  scene.add(axes);
+
+  // Controls
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.autoRotate = true;
+  controls.autoRotateSpeed = 0.5;
+
+  // GLTF Loader with DRACO + Meshopt
+  const loader = new GLTFLoader();
+  const draco = new DRACOLoader();
+  // Use Google-hosted decoders (fast, CORS-ready)
+  draco.setDecoderPath('https://www.gstatic.com/draco/v1/decoders/');
+  loader.setDRACOLoader(draco);
+  loader.setMeshoptDecoder(MeshoptDecoder);
+
+  // Load the model (must be next to index.html in repo)
+  const MODEL_URL = './PScolor_3D.glb';
+  loader.load(MODEL_URL, (gltf) => {
+    const root = gltf.scene || gltf.scenes?.[0];
+    if (!root){ setErr('GLB без scene'); return; }
+    scene.add(root);
+    fitToView(camera, root, controls);
+    setOk('Модель загружена');
+  }, (e) => {
+    if (e.total) progressChip.textContent = 'Загрузка ' + (e.loaded/e.total*100).toFixed(0) + '%';
+  }, (e) => {
+    setErr('Не удалось загрузить ' + MODEL_URL + ': ' + (e?.message || e));
+  });
+
+  function fitToView(cam, obj, controls){
+    const box = new THREE.Box3().setFromObject(obj);
+    const size = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
+    const maxSize = Math.max(size.x,size.y,size.z) || 1;
+    const dist = maxSize / (2*Math.tan(THREE.MathUtils.degToRad(cam.fov)/2));
+    cam.near = dist/100; cam.far = dist*100; cam.updateProjectionMatrix();
+    cam.position.copy(center).add(new THREE.Vector3(dist, dist*0.3, dist));
+    controls.target.copy(center); controls.update();
+  }
+
+  function animate(){
+    requestAnimationFrame(animate);
+    controls.update();
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  addEventListener('resize', () => {
+    camera.aspect = innerWidth/innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+  });
+</script>
+</body>
+</html>
