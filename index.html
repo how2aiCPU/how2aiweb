@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Three.js GLB Viewer — fail‑safe</title>
+  <style>
+    html,body{height:100%;margin:0;background:#0f1115;overflow:hidden}
+    canvas{display:block;width:100%;height:100%}
+    #hud{position:fixed;left:12px;top:12px;right:12px;display:flex;gap:8px;flex-wrap:wrap}
+    .chip{padding:6px 10px;border-radius:999px;font:12px/1 system-ui,Arial;background:#1f2430;color:#ddd}
+    .ok{background:#17361c;color:#d8ffd6}
+    .err{background:#3a1f1f;color:#ffdada}
+  </style>
+</head>
+<body>
+<div id="hud">
+  <div id="status" class="chip">Загрузка…</div>
+  <div id="progress" class="chip"></div>
+</div>
+
+<script type="module">
+  // === 1) Core imports ===
+  import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js';
+  import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/loaders/GLTFLoader.js';
+
+  // === 2) Try to import OrbitControls, but don't fail if it breaks ===
+  let OrbitControls = null;
+  try {
+    const mod = await import('https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/controls/OrbitControls.js');
+    OrbitControls = mod.OrbitControls;
+  } catch (e) {
+    console.warn('OrbitControls не загрузился, включу автоповорот модели.', e);
+  }
+
+  const status = document.getElementById('status');
+  const progress = document.getElementById('progress');
+  function setOk(t){ status.className='chip ok'; status.textContent=t||'Готово'; }
+  function setErr(t){ status.className='chip err'; status.textContent='Ошибка'; console.error(t); }
+
+  // === 3) Scene/camera/renderer ===
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x17191f);
+
+  const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.01, 5000);
+  camera.position.set(0,1,3);
+
+  const renderer = new THREE.WebGLRenderer({antialias:true});
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  document.body.appendChild(renderer.domElement);
+
+  // lights
+  scene.add(new THREE.AmbientLight(0xffffff,0.6));
+  const dir = new THREE.DirectionalLight(0xffffff,1.1); dir.position.set(3,5,2); scene.add(dir);
+
+  // controls (optional)
+  let controls = null;
+  if (OrbitControls) {
+    controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.autoRotate = true;
+    controls.autoRotateSpeed = 0.5;
+  }
+
+  // === 4) Load model (absolute URL to avoid path issues) ===
+  const MODEL_URL = 'https://how2aicpu.github.io/how2aiweb/PScolor_3D.glb';
+  const loader = new GLTFLoader();
+  let root = null;
+  loader.load(MODEL_URL, (gltf)=>{
+    root = gltf.scene;
+    scene.add(root);
+    fitToView(camera, root, controls);
+    setOk('Модель загружена');
+  }, (e)=>{
+    if (e.total) progress.textContent = 'Загрузка ' + (e.loaded/e.total*100).toFixed(0) + '%';
+  }, (e)=>{
+    setErr('Не удалось загрузить модель: ' + (e?.message || e));
+  });
+
+  function fitToView(cam, obj, controls){
+    const box = new THREE.Box3().setFromObject(obj);
+    const size = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
+    const maxSize = Math.max(size.x,size.y,size.z) || 1;
+    const dist = maxSize / (2*Math.tan(THREE.MathUtils.degToRad(cam.fov)/2));
+    cam.near = dist/100; cam.far = dist*100; cam.updateProjectionMatrix();
+    cam.position.copy(center).add(new THREE.Vector3(dist, dist*0.3, dist));
+    if (controls){ controls.target.copy(center); controls.update(); }
+  }
+
+  // === 5) Render loop ===
+  function loop(){
+    requestAnimationFrame(loop);
+    if (!controls && root){ root.rotation.y += 0.004; } // fallback if no controls
+    if (controls) controls.update();
+    renderer.render(scene, camera);
+  }
+  loop();
+
+  addEventListener('resize', ()=>{
+    camera.aspect = innerWidth/innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+  });
+</script>
+</body>
+</html>
