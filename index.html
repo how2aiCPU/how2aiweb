@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>PScolor_3D.glb — Viewer</title>
+  <style>
+    html,body{height:100%;margin:0;background:#111;overflow:hidden}
+    canvas{display:block;width:100%;height:100%}
+  </style>
+</head>
+<body>
+<script type="module">
+  import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js';
+  import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/loaders/GLTFLoader.js';
+  import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/controls/OrbitControls.js';
+
+  // сцена/камера/рендер
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x222222);
+
+  const camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.01, 1000);
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  document.body.appendChild(renderer.domElement);
+
+  // свет
+  scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+  const dir = new THREE.DirectionalLight(0xffffff, 1.2);
+  dir.position.set(3, 5, 2);
+  scene.add(dir);
+
+  // управление
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.autoRotate = true;
+  controls.autoRotateSpeed = 0.5;
+
+  // загрузка GLB
+  const loader = new GLTFLoader();
+  loader.load('./PScolor_3D.glb', (gltf) => {
+    const root = gltf.scene;
+    scene.add(root);
+    fitCameraToObject(camera, root, controls);
+  }, (e) => {
+    // прогресс в консоли
+    if (e.total) console.log(`Loaded ${(e.loaded/e.total*100).toFixed(1)}%`);
+  }, (err) => {
+    console.error('Ошибка загрузки GLB:', err);
+  });
+
+  // кадрирование камеры под модель
+  function fitCameraToObject(cam, object, controls){
+    const box = new THREE.Box3().setFromObject(object);
+    const size = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
+
+    const maxSize = Math.max(size.x, size.y, size.z);
+    const fitHeightDistance = maxSize / (2 * Math.tan(THREE.MathUtils.degToRad(cam.fov) / 2));
+    const fitWidthDistance  = fitHeightDistance / cam.aspect;
+    const distance = 1.2 * Math.max(fitHeightDistance, fitWidthDistance);
+
+    cam.near = distance / 100;
+    cam.far  = distance * 100;
+    cam.updateProjectionMatrix();
+
+    cam.position.copy(center).add(new THREE.Vector3(distance, distance * 0.3, distance));
+    controls.target.copy(center);
+    controls.update();
+  }
+
+  // рендер-цикл
+  function animate(){
+    requestAnimationFrame(animate);
+    controls.update();
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  // ресайз
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+</script>
+</body>
+</html>
