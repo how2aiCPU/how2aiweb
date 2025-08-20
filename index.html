@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>GLB Viewer — verified</title>
+  <style>
+    html,body{height:100%;margin:0;background:#111;overflow:hidden}
+    canvas{display:block;width:100%;height:100%}
+    #hud{position:fixed;left:12px;right:12px;top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+    .chip{padding:6px 10px;border-radius:999px;font:12px/1 system-ui,Arial;background:#1f2430;color:#ddd}
+    .ok{background:#17361c;color:#d8ffd6}
+    .err{background:#3a1f1f;color:#ffdada}
+    #log{position:fixed;left:12px;right:12px;bottom:12px;background:#1f2430;padding:10px;border-radius:10px;
+         font:12px/1.4 ui-monospace,Consolas,monospace;max-height:50vh;overflow:auto;white-space:pre-wrap}
+  </style>
+</head>
+<body>
+<div id="hud">
+  <div id="status" class="chip">Проверка URL…</div>
+  <div id="progress" class="chip"></div>
+  <a id="open" class="chip" href="#" target="_blank" rel="noopener">Открыть GLB</a>
+</div>
+<div id="log" style="display:none"></div>
+
+<script type="module">
+  import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js';
+  import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/loaders/GLTFLoader.js';
+
+  const status = document.getElementById('status');
+  const progress = document.getElementById('progress');
+  const logBox = document.getElementById('log');
+  const log = (m)=>{ logBox.style.display='block'; logBox.textContent += String(m)+'\n'; console.log(m); };
+  const ok=(t)=>{ status.className='chip ok'; status.textContent=t; };
+  const err=(t)=>{ status.className='chip err'; status.textContent='Ошибка'; log(t); };
+
+  // Абсолютный URL к твоей модели + кэш-бастер
+  const MODEL_URL = 'https://how2aicpu.github.io/how2aiweb/PScolor_3D.glb?v=' + Date.now();
+  document.getElementById('open').href = MODEL_URL;
+  log('MODEL_URL=' + MODEL_URL);
+
+  // Префлайт-проверка
+  try {
+    const head = await fetch(MODEL_URL, { method:'GET', mode:'cors' });
+    log('fetch status ' + head.status + ' ' + head.statusText);
+    if (!head.ok) throw new Error('HTTP ' + head.status + ' ' + head.statusText);
+    ok('URL ок, загружаю модель…');
+  } catch (e) {
+    err('Файл недоступен: ' + e.message);
+  }
+
+  const scene = new THREE.Scene(); scene.background = new THREE.Color(0x202225);
+  const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.01, 5000);
+  const renderer = new THREE.WebGLRenderer({antialias:true}); renderer.setSize(innerWidth, innerHeight);
+  renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  document.body.appendChild(renderer.domElement);
+  scene.add(new THREE.AmbientLight(0xffffff,0.7));
+  { const d = new THREE.DirectionalLight(0xffffff,1.0); d.position.set(3,5,2); scene.add(d); }
+
+  let root=null;
+  const loader = new GLTFLoader();
+  loader.load(MODEL_URL, (g)=>{
+    root=g.scene; scene.add(root); fit(camera,root);
+    ok('Готово'); setTimeout(()=>{document.getElementById('hud').style.display='none';},1000);
+  }, (e)=>{
+    if (e.total) progress.textContent = 'Загрузка ' + (e.loaded/e.total*100).toFixed(0) + '%';
+  }, (e)=>{ err('GLTFLoader error: ' + (e?.message || e)); });
+
+  function fit(cam,obj){ const b=new THREE.Box3().setFromObject(obj), c=b.getCenter(new THREE.Vector3()),
+    s=b.getSize(new THREE.Vector3()), m=Math.max(s.x,s.y,s.z)||1, dist=m/(2*Math.tan(THREE.MathUtils.degToRad(cam.fov)/2));
+    cam.near=dist/100; cam.far=dist*100; cam.updateProjectionMatrix(); cam.position.copy(c).add(new THREE.Vector3(dist,dist*0.3,dist));
+    const pivot = new THREE.Group(); pivot.position.copy(c); obj.position.sub(c); pivot.add(obj); scene.add(pivot); root=pivot; }
+
+  (function loop(){ requestAnimationFrame(loop); if(root) root.rotation.y += 0.004; renderer.render(scene, camera); })();
+  addEventListener('resize',()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
+
+</script>
+</body>
+</html>
