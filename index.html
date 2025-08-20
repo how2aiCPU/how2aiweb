@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>PScolor_3D.glb — Three.js Viewer (ESM)</title>
+  <style>
+    html,body{height:100%;margin:0;overflow:hidden;background:#111}
+    #msg{position:fixed;left:12px;top:12px;right:12px;padding:10px 12px;border-radius:10px;
+         background:#2b2b2b;color:#eee;font:13px/1.45 system-ui,Arial;opacity:.95}
+    #msg.ok{background:#1f2b1f;color:#d6ffd6}
+    #msg.err{background:#2b1b1b;color:#ffdada}
+  </style>
+</head>
+<body>
+<div id="msg">Загружается…</div>
+<script type="module">
+  import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js';
+  import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/loaders/GLTFLoader.js';
+  import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/controls/OrbitControls.js';
+
+  const banner = document.getElementById('msg');
+  function ok(t){ banner.className='ok'; banner.textContent=t; setTimeout(()=>banner.remove(), 1200); }
+  function err(t){ banner.className='err'; banner.textContent=t; console.error(t); }
+
+  // Scene / Camera / Renderer
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x202225);
+
+  const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.01, 2000);
+  camera.position.set(0, 1, 3);
+
+  const renderer = new THREE.WebGLRenderer({ antialias:true });
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  document.body.appendChild(renderer.domElement);
+
+  // Lights
+  scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+  const dir = new THREE.DirectionalLight(0xffffff, 1.0);
+  dir.position.set(2.5, 4, 2);
+  scene.add(dir);
+
+  // Controls (module import, NOT THREE.OrbitControls)
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.autoRotate = true;
+  controls.autoRotateSpeed = 0.6;
+
+  // Load GLB
+  const loader = new GLTFLoader();
+  loader.load('./PScolor_3D.glb', (gltf) => {
+    const root = gltf.scene;
+    scene.add(root);
+    fitToView(camera, root, controls);
+    ok('Готово');
+  }, (e) => {
+    if (e.total) banner.textContent = 'Загрузка ' + (e.loaded/e.total*100).toFixed(0) + '%';
+  }, (e) => {
+    err('Не удалось загрузить PScolor_3D.glb: ' + (e?.message || e));
+  });
+
+  function fitToView(cam, obj, controls){
+    const box = new THREE.Box3().setFromObject(obj);
+    const size = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
+    const maxSize = Math.max(size.x,size.y,size.z) || 1;
+    const dist = maxSize / (2 * Math.tan(THREE.MathUtils.degToRad(cam.fov)/2));
+    cam.near = dist/100; cam.far = dist*100; cam.updateProjectionMatrix();
+    cam.position.copy(center).add(new THREE.Vector3(dist, dist*0.3, dist));
+    controls.target.copy(center); controls.update();
+  }
+
+  function loop(){
+    requestAnimationFrame(loop);
+    controls.update();
+    renderer.render(scene, camera);
+  }
+  loop();
+
+  addEventListener('resize', () => {
+    camera.aspect = innerWidth/innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+  });
+</script>
+</body>
+</html>
